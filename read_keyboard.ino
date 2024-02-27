@@ -39,6 +39,14 @@
   
  */
 
+
+#include <MIDI.h>
+#define MIDI_CHANNEL 1    // transmit on this channel
+#define MIDI_BASE 42      // MIDI note for lowest key (C) (modify this value for transpose)
+
+MIDI_CREATE_DEFAULT_INSTANCE();
+
+
 // bus_NO is D2
 #define BUS_NO_PIN 2
 
@@ -91,15 +99,15 @@
 #define read_switch_bus_B     PIND & (1<<PIND7)
 
 
-#define KEY_NOT_PRESSED 'o'
+#define KEY_RELEASED 'o'
 #define KEY_PRESSED '_'
 #define KEY_UNKNOWN '.'
 #define KEY_UNSET 0
 
 #define N_KEYS 37
 
-char keys[N_KEYS]         = { KEY_NOT_PRESSED };      // archived key states, to compare with the following:
-char scanned_keys[N_KEYS] = { KEY_NOT_PRESSED };      // newly scanned key states
+char keys[N_KEYS]         = { KEY_RELEASED };      // archived key states, to compare with the following:
+char scanned_keys[N_KEYS] = { KEY_RELEASED };      // newly scanned key states
 
 #define SWITCH_ON  'o'
 #define SWITCH_OFF '_'
@@ -146,8 +154,8 @@ void setup() {
 
   for (uint8_t i = 0; i < N_KEYS; i++)
   {
-    keys[i]         = KEY_NOT_PRESSED;
-    scanned_keys[i] = KEY_NOT_PRESSED;
+    keys[i]         = KEY_RELEASED;
+    scanned_keys[i] = KEY_RELEASED;
   }
 
   for (uint8_t i = 0; i < N_SWITCHES; i++)
@@ -178,39 +186,39 @@ void pulse_SR_shift_and_latch_clock(void)
 
 
 
-
+/*
 void scan_keyboard(void)
 {
+  scan_keys();
+  scan_switches();
+}
+*/
+
+void scan_keys(void)
+{
   /* 
-   * scan Keys 
+   * scan N_KEYS Keys
    */
   char key_state = KEY_UNKNOWN;
 
-  // 6 SR x 8 bits = 48
-  //for (uint8_t i = 0; i < 6*8; i++)
   for (uint8_t i = 0; i < N_KEYS; i++)
   {
     if (i == 0)
     {
-      // if it's the 1st step, send a "low" to the shift registers
-      set_DS_low;
+      set_DS_low;       // if it's the 1st step, send a "low" to the shift registers
     }
     else
     {
-      // for the next steps, send "high" to keep all the other keys high
-      set_DS_high;
+      set_DS_high;      // for the next steps, send "high" to keep all the other keys high
     }
     
     pulse_SR_shift_and_latch_clock();
 
-    // read bus_NO
-    uint8_t bus_no = read_bus_no;
-  
-    // read bus_NC
-    uint8_t bus_nc = read_bus_nc;
-  
+    uint8_t bus_no = read_bus_no;    // read the Normally Open bus
+    uint8_t bus_nc = read_bus_nc;    // read the Normally Closed bus
+
     /*
-     * if a key is not pressed, it must be detected by bus_nc (normally Closed)
+     * if a key is not pressed, it must be detected by bus_nc (normally Closed) by a LOW value
      * if the key is detected on bus_nc, it means the key isn't pressed (and not moving)
      * 
      * if the key isn't detected both on bus_nc and bus_no, it means it's either moving from bus_nc or there's a contact fault
@@ -218,28 +226,64 @@ void scan_keyboard(void)
      * if the key is detected on bus_no, the key is pressed (and not moving)
      * 
      */
-    if (bus_nc == 0)  // detected on bus_nc
+    if (bus_nc == 0)  // if a LOW value is detected on bus_nc,
     {
-      key_state = KEY_NOT_PRESSED;
-      //keys[i] = key_state;
+      key_state = KEY_RELEASED;
     }
     else
     {
       // if a key is pressed, then bus_no should be 0 when we address that key
-      if (bus_no == 0)  // detected on bus_no
+      if (bus_no == 0)  // if a LOW value is detected on bus_no
       {
         key_state = KEY_PRESSED;
-        //keys[i] = key_state;
       }
       else  // the key is in between bus_nc and bus_no
       {
         key_state = KEY_UNKNOWN;
-        //keys[i] = key_state;
       }
     }
-    scanned_keys[i] = key_state;
-  }
 
+    // check difference here
+    if (key_state != keys[i])     // if the saved state for the adressed key is different from what we just read then
+    {
+      //handle_key_change(key_state, keys[i], i);
+      handle_key_change(key_state, i);
+    }
+    
+    //scanned_keys[i] = key_state;
+    // save the current state
+    keys[i] = key_state;
+  }
+}
+
+
+/*
+ * Measure timing only after scan of the entire keybed
+ * do not send MIDI message during keybed scan, it takes much time to send data
+ * 
+ * 
+ */
+//void handle_key_change(char key_state, char previous_key_state, uint8_t key)
+void handle_key_change(char key_state, uint8_t key)
+{
+  Serial.print(key);
+  Serial.print(' ');
+  Serial.println(key_state);
+
+  if (key_state == KEY_PRESSED)
+  {
+    Serial.print('NoetOn');
+    //MIDI.sendNoteOn(MIDI_BASE + key, 127, MIDI_CHANNEL);    // Send a Note On (pitch MIDI_BASE + i, velo 127 on channel MIDI_CHANNEL)
+  }
+  if (key_state == KEY_RELEASED)
+  {
+    Serial.print('NoetOff');
+    //MIDI.sendNoteOff(MIDI_BASE + key, 0, MIDI_CHANNEL);     // Send a Note Off (pitch MIDI_BASE + i, velo 0 on channel MIDI_CHANNEL)
+  }
+}
+
+void scan_switches(void)
+{
   /*
    * scan Switches
    */
@@ -249,19 +293,23 @@ void scan_keyboard(void)
   {
     pulse_SR_shift_and_latch_clock();
 
-    // read switch bus A
-    uint8_t switch_bus_A = read_switch_bus_A;
-  
-    // read switch bus B
-    uint8_t switch_bus_B = read_switch_bus_B;
+    uint8_t switch_bus_A = read_switch_bus_A;    // read switch bus A
+    uint8_t switch_bus_B = read_switch_bus_B;    // read switch bus B
     
-    if (switch_bus_B == 0)  // detected on switch_bus_A
+    if (switch_bus_B == 0)  // detected on switch_bus_B
     {
       switch_state = SWITCH_ON;
     }
     else  // NOT detected on switch_bus_B
     {
-      switch_state = SWITCH_OFF;
+      if (switch_bus_A == 0)  // detected on switch_bus_A
+      {
+        switch_state = SWITCH_OFF;
+      }
+      else
+      {
+        // error or moving
+      }
     }
     scanned_switches[i] = switch_state;
   }
@@ -299,6 +347,7 @@ void show_scanned_switches(void)
   Serial.println();
 }
 
+/*
 void find_changes(void)
 {
   for (uint8_t i = 0; i < N_KEYS; i++)
@@ -310,6 +359,15 @@ void find_changes(void)
       Serial.println(scanned_keys[i]);
       
       keys[i] = scanned_keys[i];
+
+      if (keys[i] == KEY_PRESSED)
+      {
+        MIDI.sendNoteOn(MIDI_BASE + i, 127, MIDI_CHANNEL);    // Send a Note On (pitch MIDI_BASE + i, velo 127 on channel MIDI_CHANNEL)
+      }
+      if (keys[i] == KEY_RELEASED)
+      {
+        MIDI.sendNoteOff(MIDI_BASE + i, 0, MIDI_CHANNEL);     // Send a Note Off (pitch MIDI_BASE + i, velo 0 on channel MIDI_CHANNEL)
+      }
     }
   }
 
@@ -325,13 +383,17 @@ void find_changes(void)
     }
   }
 }
+*/
 
 void loop()
 {
-  scan_keyboard();
+  //scan_keyboard();
+  scan_keys();
+  scan_switches();
+
   //show_scanned_keys();
   //show_scanned_switches();
-  find_changes();
+  //find_changes();
   //measure_velocity();
   //send_midi_messages();
 
