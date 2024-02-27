@@ -243,44 +243,21 @@ void scan_keys(void)
       }
     }
 
+    /*
     // check difference here
     if (key_state != keys[i])     // if the saved state for the adressed key is different from what we just read then
     {
       //handle_key_change(key_state, keys[i], i);
       handle_key_change(key_state, i);
     }
-    
-    //scanned_keys[i] = key_state;
+    */
+
     // save the current state
-    keys[i] = key_state;
+    scanned_keys[i] = key_state;
+    //keys[i] = key_state;
   }
 }
 
-
-/*
- * Measure timing only after scan of the entire keybed
- * do not send MIDI message during keybed scan, it takes much time to send data
- * 
- * 
- */
-//void handle_key_change(char key_state, char previous_key_state, uint8_t key)
-void handle_key_change(char key_state, uint8_t key)
-{
-  Serial.print(key);
-  Serial.print(' ');
-  Serial.println(key_state);
-
-  if (key_state == KEY_PRESSED)
-  {
-    Serial.print('NoetOn');
-    //MIDI.sendNoteOn(MIDI_BASE + key, 127, MIDI_CHANNEL);    // Send a Note On (pitch MIDI_BASE + i, velo 127 on channel MIDI_CHANNEL)
-  }
-  if (key_state == KEY_RELEASED)
-  {
-    Serial.print('NoetOff');
-    //MIDI.sendNoteOff(MIDI_BASE + key, 0, MIDI_CHANNEL);     // Send a Note Off (pitch MIDI_BASE + i, velo 0 on channel MIDI_CHANNEL)
-  }
-}
 
 void scan_switches(void)
 {
@@ -347,13 +324,15 @@ void show_scanned_switches(void)
   Serial.println();
 }
 
-/*
+
 void find_changes(void)
 {
   for (uint8_t i = 0; i < N_KEYS; i++)
   {
     if (scanned_keys[i] != keys[i])
     {
+       handle_key_change(scanned_keys[i], i);
+      /*
       Serial.print(i);
       Serial.print(' ');
       Serial.println(scanned_keys[i]);
@@ -368,6 +347,7 @@ void find_changes(void)
       {
         MIDI.sendNoteOff(MIDI_BASE + i, 0, MIDI_CHANNEL);     // Send a Note Off (pitch MIDI_BASE + i, velo 0 on channel MIDI_CHANNEL)
       }
+      */
     }
   }
 
@@ -383,7 +363,33 @@ void find_changes(void)
     }
   }
 }
-*/
+
+/*
+ * Measure timing only after scan of the entire keybed
+ * do not send MIDI message during keybed scan, it takes much time to send data
+ * 
+ * 
+ */
+//void handle_key_change(char key_state, char previous_key_state, uint8_t key)
+void handle_key_change(char key_state, uint8_t key)
+{
+  //Serial.print(key);
+  //Serial.print(' ');
+  //Serial.println(key_state);
+
+  if (key_state == KEY_PRESSED)
+  {
+    Serial.print("NoteOn ");
+    Serial.println(key);
+    //MIDI.sendNoteOn(MIDI_BASE + key, 127, MIDI_CHANNEL);    // Send a Note On (pitch MIDI_BASE + i, velo 127 on channel MIDI_CHANNEL)
+  }
+  if (key_state == KEY_RELEASED)
+  {
+    Serial.print("NoteOff ");
+    Serial.println(key);
+    //MIDI.sendNoteOff(MIDI_BASE + key, 0, MIDI_CHANNEL);     // Send a Note Off (pitch MIDI_BASE + i, velo 0 on channel MIDI_CHANNEL)
+  }
+}
 
 void loop()
 {
@@ -393,7 +399,7 @@ void loop()
 
   //show_scanned_keys();
   //show_scanned_switches();
-  //find_changes();
+  find_changes();
   //measure_velocity();
   //send_midi_messages();
 
